@@ -21,6 +21,9 @@ target_include_directories(rover_slam PRIVATE include/rover_slam)
 install(TARGETS rover_slam
   DESTINATION lib/${PROJECT_NAME})
 
+install(DIRECTORY launch/
+  DESTINATION share/${PROJECT_NAME}/launch)
+
 # Testing setup
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

@@ -17,14 +17,23 @@ class RoverSLAM: public rclcpp::Node
   std::string raw_img_topic_ = "/depth_camera/image_raw";
 
   // Subscriptions
-  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;  // Changed to SharedPtr
+  rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_sub_;
 
   // Publishers
-  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr state_pub_;  // Changed to SharedPtr
+  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr state_pub_;
 
   // Class Variables
-  int img_features_;
+  cv::Ptr<cv::ORB> orb_detector_ = cv::ORB::create();
+  cv::Ptr<cv::DescriptorMatcher> matcher_  = cv::DescriptorMatcher::create ( "BruteForce-Hamming" );
+  cv::Mat descriptors_prev_, descriptors_current_;
+  std::vector<cv::KeyPoint> keypoints_prev_, keypoints_current_;
+  std::vector<cv::DMatch> good_matches_;
+  float max_match_distance_ = 50; // to be tuned
 
   // Class Methods
-  void getFeatures(const sensor_msgs::msg::Image::SharedPtr raw_img_msg);  // Changed return type to void
+  bool applyORB(const sensor_msgs::msg::Image::SharedPtr raw_img_msg);
+  void matchKeypoints(const sensor_msgs::msg::Image::SharedPtr raw_img_msg);
+  bool isImageAvailable(const sensor_msgs::msg::Image::SharedPtr raw_img_msg);
+  bool processInitialFrame(const cv::Mat img);
+  void setGoodMatches(const std::vector<cv::DMatch> &matches);
 };
