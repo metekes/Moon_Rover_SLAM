@@ -42,7 +42,7 @@ def generate_launch_description():
     c1 = Node(
             package='controller_manager',
             executable='ros2_control_node',
-            parameters=[os.path.join(pkg_rover_control, 'config', 'rover_controllers.yaml')],
+            parameters=['/home/mete/rover.xml','/home/mete/ros_ws/src/rover_control/config/rover_controllers.yaml'],
             output='screen'
     )
 
@@ -52,8 +52,7 @@ def generate_launch_description():
             arguments=['diff_drive_controller'],
             output='screen'
     )
-    '''
-
+    
     # Your controller node
     command_publisher = Node(
         package='rover_control',
@@ -61,6 +60,6 @@ def generate_launch_description():
         name='command_publisher',
         output='screen'
     )
-    
+    '''
 
-    return LaunchDescription([world_argument, gazebo, slam_node, command_publisher])
+    return LaunchDescription([world_argument, gazebo, slam_node])
