@@ -7,6 +7,7 @@ using std::placeholders::_1;
 RoverSLAM::RoverSLAM() : Node("rover_SLAM") {
   initPublishers();
   initSubscribers();
+  createSolver();
 }
 
 void RoverSLAM::initSubscribers() {
@@ -48,7 +49,7 @@ void RoverSLAM::runSLAM() {
   matchKeypoints();
 
   // front-end
-  runVisualOdometry();
+  runBundleAdjustment();
 
   // back-end
 }
@@ -81,14 +82,9 @@ void RoverSLAM::matchKeypoints() {
   */
 }
 
-void RoverSLAM::runVisualOdometry() {
-  typedef g2o::BlockSolver<g2o::BlockSolverTraits<6, 3>> Block;
-  auto linearSolver = std::make_unique<g2o::LinearSolverEigen<Block::PoseMatrixType>>();
-  auto solver_ptr = std::make_unique<Block>(std::move(linearSolver));
-  auto solver = std::make_unique<g2o::OptimizationAlgorithmGaussNewton>(std::move(solver_ptr));
-
+void RoverSLAM::runBundleAdjustment() {
   g2o::SparseOptimizer optimizer;
-  optimizer.setAlgorithm(solver.get());  // Pass the raw pointer
+  optimizer.setAlgorithm(solver_.get());  // Pass the raw pointer
 
   // node
   g2o::VertexSE3Expmap* pose = new g2o::VertexSE3Expmap(); // camera pose
@@ -180,4 +176,11 @@ void RoverSLAM::setGoodMatches(const std::vector<cv::DMatch> &matches) {
     no_match_flag_ = false;
     std::sort(good_matches_.begin(), good_matches_.end());
   }
+}
+
+void RoverSLAM::createSolver() {
+  typedef g2o::BlockSolver<g2o::BlockSolverTraits<6, 3>> Block;
+  auto linearSolver = std::make_unique<g2o::LinearSolverEigen<Block::PoseMatrixType>>();
+  auto solver_ptr = std::make_unique<Block>(std::move(linearSolver));
+  solver_ = std::make_unique<g2o::OptimizationAlgorithmGaussNewton>(std::move(solver_ptr));
 }

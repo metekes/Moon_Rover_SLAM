@@ -8,6 +8,7 @@
 #include <opencv2/features2d/features2d.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
+#include <g2o/core/optimization_algorithm_gauss_newton.h>
 
 class RoverSLAM: public rclcpp::Node
 {
@@ -42,7 +43,7 @@ class RoverSLAM: public rclcpp::Node
 
   std::vector<cv::Point3f> points1_, points2_;
   Eigen::Isometry3d transformation_matrix_;
-
+  std::unique_ptr<g2o::OptimizationAlgorithmGaussNewton> solver_;
 
   // Class Methods
   void decodeRGBImg(const sensor_msgs::msg::Image::SharedPtr raw_rgb_img_msg);
@@ -50,9 +51,10 @@ class RoverSLAM: public rclcpp::Node
   void runSLAM();
   void concatImg();
   void matchKeypoints();
-  void runVisualOdometry();
+  void runBundleAdjustment();
   bool applyORB();
   bool isImageAvailable(const sensor_msgs::msg::Image::SharedPtr raw_img_msg);
   bool processInitialFrame();
   void setGoodMatches(const std::vector<cv::DMatch> &matches);
+  void createSolver();
 };

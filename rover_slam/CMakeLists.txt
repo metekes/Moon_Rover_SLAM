@@ -26,7 +26,7 @@ target_include_directories(icp_graph_lib PRIVATE include/rover_slam)
 add_executable(rover_slam src/rover_slam.cpp src/rover_slam_node.cpp)
 ament_target_dependencies(rover_slam rclcpp sensor_msgs cv_bridge OpenCV)
 target_include_directories(rover_slam PRIVATE include/rover_slam)
-target_link_libraries(rover_slam icp_graph_lib g2o_types_slam3d g2o_types_sba)
+target_link_libraries(rover_slam icp_graph_lib g2o::core g2o_types_slam3d g2o_types_sba)
 
 # Install targets
 install(TARGETS rover_slam
