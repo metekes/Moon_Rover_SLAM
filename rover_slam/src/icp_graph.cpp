@@ -9,7 +9,7 @@ void ICPGraph::computeError() {
 }
 
 void ICPGraph::linearizeOplus() {
-  g2o::VertexSE3Expmap* pose = static_cast<g2o::VertexSE3Expmap *>(_vertices[0]);
+  g2o::VertexSE3Expmap* pose = static_cast<g2o::VertexSE3Expmap*>(_vertices[0]);
   g2o::SE3Quat T(pose->estimate());
   Eigen::Vector3d xyz_trans = T.map(_point);
   double x = xyz_trans[0];
