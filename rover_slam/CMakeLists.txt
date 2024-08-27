@@ -13,6 +13,7 @@ find_package(cv_bridge REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(g2o REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(message_filters REQUIRED)
 
 include_directories(${g2o_INCLUDE_DIRS})
 include_directories(${Eigen3_INCLUDE_DIRS})
@@ -24,7 +25,7 @@ target_include_directories(icp_graph_lib PRIVATE include/rover_slam)
 
 # Create executable
 add_executable(rover_slam src/rover_slam.cpp src/rover_slam_node.cpp)
-ament_target_dependencies(rover_slam rclcpp sensor_msgs cv_bridge OpenCV)
+ament_target_dependencies(rover_slam rclcpp sensor_msgs cv_bridge OpenCV message_filters)
 target_include_directories(rover_slam PRIVATE include/rover_slam)
 target_link_libraries(rover_slam icp_graph_lib g2o::core g2o_types_slam3d g2o_types_sba)
 

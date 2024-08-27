@@ -3,8 +3,10 @@
 #include "icp_graph.hpp"
 
 using std::placeholders::_1;
+using std::placeholders::_2;
 
 RoverSLAM::RoverSLAM() : Node("rover_SLAM") {
+  rover_states_ = Eigen::Isometry3d::Identity();
   initPublishers();
   initSubscribers();
   createSolver();
@@ -14,45 +16,40 @@ void RoverSLAM::initSubscribers() {
   rmw_qos_profile_t qos_profile = rmw_qos_profile_sensor_data;
   auto qosSensorData = rclcpp::QoS(rclcpp::QoSInitialization(qos_profile.history, 1), qos_profile);
 
-  depth_image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(raw_depth_img_topic_, qosSensorData, std::bind(&RoverSLAM::decodeDepthImg, this, std::placeholders::_1));
-  
-  rgb_image_sub_ = this->create_subscription<sensor_msgs::msg::Image>(raw_rgb_img_topic_, qosSensorData, std::bind(&RoverSLAM::decodeRGBImg, this, std::placeholders::_1));
+  depth_image_sub_ = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(this, raw_depth_img_topic_);
+  rgb_image_sub_ = std::make_shared<message_filters::Subscriber<sensor_msgs::msg::Image>>(this, raw_rgb_img_topic_);
 
-  camera_param_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(camera_param_topic_, qosSensorData, std::bind(&RoverSLAM::getIntrinsicParameters, this, std::placeholders::_1));
+  typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::msg::Image, sensor_msgs::msg::Image> MySyncPolicy;
+  sync_ = std::make_shared<message_filters::Synchronizer<MySyncPolicy>>(MySyncPolicy(10),  *rgb_image_sub_, *depth_image_sub_);
+  sync_->registerCallback(std::bind(&RoverSLAM::decodeImg, this, _1, _2));
+
+  camera_param_sub_ = this->create_subscription<sensor_msgs::msg::CameraInfo>(camera_param_topic_, qosSensorData, std::bind(&RoverSLAM::getIntrinsicParameters, this, _1));
 }
 
 void RoverSLAM::initPublishers() {
   // TO BE IMPLEMENTED
 }
 
-void RoverSLAM::decodeRGBImg(const sensor_msgs::msg::Image::SharedPtr raw_rgb_img_msg) {
+void RoverSLAM::decodeImg(const sensor_msgs::msg::Image::ConstSharedPtr& raw_rgb_img_msg, const sensor_msgs::msg::Image::ConstSharedPtr& raw_depth_img_msg) {
   if (isImageAvailable(raw_rgb_img_msg) == false) {
     rgb_img_available_ = false;
+    depth_img_available_ = false;
   }
 
   else {
     rgb_img_available_ = true;
-    rgb_img_ = cv_bridge::toCvShare(raw_rgb_img_msg, "bgr8") -> image;
-    // cv::imshow("b", rgb_img_);
-    // cv::waitKey(0);
-    runSLAM();
-  }
-}
-
-void RoverSLAM::decodeDepthImg(const sensor_msgs::msg::Image::SharedPtr raw_depth_img_msg) {
-  if (isImageAvailable(raw_depth_img_msg) == false) {
-    depth_img_available_ = false;
-  }
-  else {
-    std::cout << "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" << std::endl;
     depth_img_available_ = true;
+
+    rgb_img_ = cv_bridge::toCvShare(raw_rgb_img_msg, "bgr8") -> image;
     depth_img_current_ = cv_bridge::toCvShare(raw_depth_img_msg, "32FC1") -> image;
-    
+    /*
     cv::Mat depth_img_normalized;
     cv::normalize(depth_img_current_, depth_img_normalized, 0, 255, cv::NORM_MINMAX);
     depth_img_normalized.convertTo(depth_img_normalized, CV_8UC1); // Convert to 8-bit grayscale
-    cv::imshow("ada", depth_img_normalized);
+    cv::imshow("depth_img_current", depth_img_normalized);
     cv::waitKey(100);
+    */
+    runSLAM();
   }
 }
 
@@ -61,9 +58,22 @@ void RoverSLAM::runSLAM() {
     // front-end
     if (intrinsic_param_mat_available_) {
       getFeatureCoordinatesIn3D();
-      // runBundleAdjustment();
+      runBundleAdjustment();
+      std::cout << "here 11" << std::endl;
+      rover_states_ = rover_states_ * transformation_matrix_;
+      std::cout << "here 2" << std::endl;
+
       points1_.clear();
       points2_.clear();
+
+      keypoints_matched_prev_.clear();
+      keypoints_matched_current_.clear();
+
+      depths_matched_current_.clear();
+      depths_matched_prev_.clear();
+
+      keypoints_prev_   = keypoints_current_;
+      descriptors_prev_ = descriptors_current_.clone();
     }
 
     // back-end
@@ -78,9 +88,7 @@ bool RoverSLAM::matchKeypoints() {
     std::vector<cv::DMatch> matches;
     matcher_->match(descriptors_prev_, descriptors_current_, matches);
     setGoodMatches(matches);
-
-    keypoints_matched_prev_.clear();
-    keypoints_matched_current_.clear();
+    std::cout << "here 4" << std::endl;
 
     for (uint i=0; i<good_matches_.size(); i++) {
       int index_prev = good_matches_[i].queryIdx;
@@ -101,17 +109,17 @@ bool RoverSLAM::matchKeypoints() {
       keypoints_matched_prev_.push_back(pixel_prev);
       keypoints_matched_current_.push_back(pixel_current);
     }
+    std::cout << "here 6" << std::endl;
+
+    /* TO VISULAIZE MATCHES, SHOULD BE INCLUDED INTO ABOVE ELSE WHEN IT IS ACTIVATED
+    cv::Mat img_match;
+    cv::drawMatches(prev_img_, keypoints_prev_, rgb_img_, keypoints_current_, good_matches_, img_match);
+    prev_img_ = rgb_img_;
+    cv::imshow("good matches", img_match);
+    cv::waitKey(100);
+    */
     return true;
   }
-
-  /* TO VISULAIZE MATCHES, SHOULD BE INCLUDED INTO ABOVE ELSE WHEN IT IS ACTIVATED
-  cv::Mat img = cv_bridge::toCvShare(raw_img_msg, "bgr8") -> image;
-  cv::Mat img_match;
-  cv::drawMatches(prev_img_, keypoints_prev_, img, keypoints_current_, good_matches_, img_match);
-  prev_img_ = img;
-  cv::imshow("good matches", img_match);
-  cv::waitKey(1);
-  */
 }
 
 void RoverSLAM::getFeatureCoordinatesIn3D() {
@@ -122,11 +130,9 @@ void RoverSLAM::getFeatureCoordinatesIn3D() {
       // intrincis full 0 dönüyor
       cv::Mat_<float> keypoint_prev_float;
       keypoints_matched_prev_[i].convertTo(keypoint_prev_float, CV_32F);
-      // std::cout << intrinsic_param_mat_.inv() * keypoint_prev_float << std::endl;
       cv::Mat result = intrinsic_param_mat_.inv() * keypoint_prev_float;
       points1_.push_back(cv::Point3f(result.at<float>(0, 0), result.at<float>(1, 0), result.at<float>(2, 0)));
     }
-    std::cout << "1" << std::endl;
 
     for (uint i=0; i<keypoints_matched_current_.size(); i++) {
       cv::Mat_<float> keypoint_current_float;
@@ -135,15 +141,10 @@ void RoverSLAM::getFeatureCoordinatesIn3D() {
       points2_.push_back(cv::Point3f(result.at<float>(0, 0), result.at<float>(1, 0), result.at<float>(2, 0)));
     }
     getDepthInMeters();
-    std::cout << "2" << std::endl;
-    std::cout << points1_.size() << std::endl;
-    std::cout << depths_matched_prev_.size() << std::endl;
-    std::cout << depths_matched_prev_[0] << std::endl;
     
     for (uint i=0; i<points1_.size(); i++) {
       points1_[i] = points1_[i] * depths_matched_prev_[i];
     }
-    std::cout << "3" << std::endl;
 
     for (uint i=0; i<points2_.size(); i++) {
       points2_[i] = points2_[i] * depths_matched_current_[i];
@@ -152,24 +153,13 @@ void RoverSLAM::getFeatureCoordinatesIn3D() {
 }
 
 void RoverSLAM::getDepthInMeters() {
-  depths_matched_current_.clear();
-  depths_matched_prev_.clear();
-  std::cout << "Here" << std::endl;
-  std::cout << keypoints_matched_prev_[0].at<int>(0,0) << std::endl;
-  std::cout << keypoints_matched_prev_[0].at<int>(1,0) << std::endl;
-  std::cout << depth_img_prev_.size() << std::endl;
-  
-  std::cout << "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB" << std::endl;
-
+  /*
   cv::Mat depth_img_normalized;
-  cv::normalize(depth_img_current_, depth_img_normalized, 0, 255, cv::NORM_MINMAX);
+  cv::normalize(depth_img_prev_, depth_img_normalized, 0, 255, cv::NORM_MINMAX);
   depth_img_normalized.convertTo(depth_img_normalized, CV_8UC1); // Convert to 8-bit grayscale
-  cv::imshow("a", depth_img_normalized);
+  cv::imshow("depth_img_prev", depth_img_normalized);
   cv::waitKey(100);
-  
-  std::cout << depth_img_current_.at<float>(keypoints_matched_current_[0].at<int>(1,0), keypoints_matched_current_[0].at<int>(0,0)) << std::endl;
-  
-  std::cout << depth_img_prev_.at<float>(keypoints_matched_prev_[0].at<int>(1,0), keypoints_matched_prev_[0].at<int>(0,0)) << std::endl;
+  */
 
   for (uint i=0; i<points1_.size(); i++) {
     depths_matched_prev_.push_back(depth_img_prev_.at<float>(keypoints_matched_prev_[i].at<int>(1,0), keypoints_matched_prev_[i].at<int>(0,0)));
@@ -194,12 +184,12 @@ void RoverSLAM::runBundleAdjustment() {
   // add the edges
   int index = 1;
   std::vector<ICPGraph*> edges;
-  for (size_t i = 0; i < points1_.size(); i++) {
-    ICPGraph* edge = new ICPGraph(Eigen::Vector3d(points2_[i].x, points2_[i].y, points2_[i].z));
+  for (size_t i = 0; i < points2_.size(); i++) {
+    ICPGraph* edge = new ICPGraph(Eigen::Vector3d(points1_[i].x, points1_[i].y, points1_[i].z));
     edge->setId(index);
-    edge->setVertex(0, dynamic_cast<g2o::VertexSE3Expmap*>(pose));
-    edge->setMeasurement(Eigen::Vector3d(points1_[i].x, points1_[i].y, points1_[i].z));
-    edge->setInformation(Eigen::Matrix3d::Identity() * 1e4);  // To be tuned
+    edge->setVertex(0, pose);
+    edge->setMeasurement(Eigen::Vector3d(points2_[i].x, points2_[i].y, points2_[i].z));
+    edge->setInformation(Eigen::Matrix3d::Identity());  // To be tuned
     optimizer.addEdge(edge);
     index++;
     edges.push_back(edge);
@@ -207,19 +197,18 @@ void RoverSLAM::runBundleAdjustment() {
 
   optimizer.setVerbose(true);
   optimizer.initializeOptimization();
-  optimizer.optimize(20);
+  optimizer.optimize(10);
 
   transformation_matrix_ = Eigen::Isometry3d(pose->estimate()).matrix();
-
   // Clean up
   for (auto edge : edges) {
       delete edge;
   }
   delete pose;
+  std::cout << "here 1" << std::endl;
 }
 
 bool RoverSLAM::applyORB() {
-  
   if (rgb_img_available_ == false || depth_img_available_ == false) {
     return false;
   }
@@ -231,15 +220,10 @@ bool RoverSLAM::applyORB() {
   cv::Mat gray_img;
   cv::cvtColor(rgb_img_, gray_img, CV_BGR2GRAY);
   orb_detector_->detectAndCompute(gray_img, cv::Mat(), keypoints_current_, descriptors_current_);
-
-  // cv::imshow("RGB Image", img);
-  // cv::waitKey(1);
-  keypoints_prev_   = keypoints_current_;
-  descriptors_prev_ = descriptors_current_;
   return true;
 }
 
-bool RoverSLAM::isImageAvailable(const sensor_msgs::msg::Image::SharedPtr raw_img_msg) {
+bool RoverSLAM::isImageAvailable(const sensor_msgs::msg::Image::ConstSharedPtr& raw_img_msg) {
   if (raw_img_msg->data.empty()) {
     return false;
   }
@@ -249,11 +233,12 @@ bool RoverSLAM::isImageAvailable(const sensor_msgs::msg::Image::SharedPtr raw_im
 }
 
 bool RoverSLAM::processInitialFrame() {
+  std::cout << "here 8" << std::endl;
   if (keypoints_prev_.empty() || depth_img_prev_.empty()) {
     cv::Mat gray_img;
     cv::cvtColor(rgb_img_, gray_img, CV_BGR2GRAY);
     orb_detector_->detectAndCompute(gray_img, cv::Mat(), keypoints_prev_, descriptors_prev_);
-    // prev_img_ = img; to visualize the good matches
+    // prev_img_ = rgb_img_; // to visualize the good matches
     depth_img_prev_ = depth_img_current_.clone();
     return true;
   }
@@ -263,6 +248,7 @@ bool RoverSLAM::processInitialFrame() {
 void RoverSLAM::setGoodMatches(const std::vector<cv::DMatch> &matches) {
   // TO DO: first sort then get good matches to reduce the time complexity
   good_matches_.clear();
+
   for (uint i=0; i<matches.size(); i++) {
     if (matches[i].distance <= max_match_distance_) {
       good_matches_.push_back(matches[i]);
