@@ -58,10 +58,11 @@ void RoverSLAM::runSLAM() {
     // front-end
     if (intrinsic_param_mat_available_) {
       getFeatureCoordinatesIn3D();
+      std::cout << "here 1" << std::endl;
       runBundleAdjustment();
-      std::cout << "here 11" << std::endl;
+      std::cout << "here 3" << std::endl;
       rover_states_ = rover_states_ * transformation_matrix_;
-      std::cout << "here 2" << std::endl;
+      std::cout << "here 4" << std::endl;
 
       points1_.clear();
       points2_.clear();
@@ -88,7 +89,6 @@ bool RoverSLAM::matchKeypoints() {
     std::vector<cv::DMatch> matches;
     matcher_->match(descriptors_prev_, descriptors_current_, matches);
     setGoodMatches(matches);
-    std::cout << "here 4" << std::endl;
 
     for (uint i=0; i<good_matches_.size(); i++) {
       int index_prev = good_matches_[i].queryIdx;
@@ -109,7 +109,6 @@ bool RoverSLAM::matchKeypoints() {
       keypoints_matched_prev_.push_back(pixel_prev);
       keypoints_matched_current_.push_back(pixel_current);
     }
-    std::cout << "here 6" << std::endl;
 
     /* TO VISULAIZE MATCHES, SHOULD BE INCLUDED INTO ABOVE ELSE WHEN IT IS ACTIVATED
     cv::Mat img_match;
@@ -199,13 +198,14 @@ void RoverSLAM::runBundleAdjustment() {
   optimizer.initializeOptimization();
   optimizer.optimize(10);
 
-  transformation_matrix_ = Eigen::Isometry3d(pose->estimate()).matrix();
+  transformation_matrix_ = pose->estimate();
   // Clean up
   for (auto edge : edges) {
       delete edge;
   }
   delete pose;
-  std::cout << "here 1" << std::endl;
+  std::cout << "Transformation Matrix: \n" << transformation_matrix_.matrix()<< std::endl;
+  std::cout << "here 2" << std::endl;
 }
 
 bool RoverSLAM::applyORB() {
@@ -233,7 +233,6 @@ bool RoverSLAM::isImageAvailable(const sensor_msgs::msg::Image::ConstSharedPtr& 
 }
 
 bool RoverSLAM::processInitialFrame() {
-  std::cout << "here 8" << std::endl;
   if (keypoints_prev_.empty() || depth_img_prev_.empty()) {
     cv::Mat gray_img;
     cv::cvtColor(rgb_img_, gray_img, CV_BGR2GRAY);

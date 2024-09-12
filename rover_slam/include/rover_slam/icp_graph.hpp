@@ -11,6 +11,7 @@
 class ICPGraph: public g2o::BaseUnaryEdge<3, Eigen::Vector3d, g2o::VertexSE3Expmap>
 {
  public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   ICPGraph(const Eigen::Vector3d& point);
   virtual void computeError();
   virtual void linearizeOplus();
